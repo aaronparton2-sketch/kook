@@ -38,7 +38,7 @@ Trigg Point: 6 out
 ```
 
 ```mermaid
-flowchart LR
+flowchart TD
     T["⏰ Every 30 min<br/><i>4:30 to 9:30am</i>"] --> F["🌊 Forecast<br/><i>Surfline, Open-Meteo backup</i>"]
     F --> P{"Pumping?"}
     P -->|no| Z["😴 Stay in bed"]
