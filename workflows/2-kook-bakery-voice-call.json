@@ -1,0 +1,215 @@
+{
+  "name": "📞 KOOK — Bakery voice call (ElevenLabs, Bland backup)",
+  "nodes": [
+    {
+      "id": "when-kook-calls",
+      "name": "When Kook calls",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {
+        "inputSource": "passthrough"
+      }
+    },
+    {
+      "id": "call-details",
+      "name": "Call details",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Everything comes from the Kook settings node of whichever workflow called this one.\nconst i = $input.first().json;\nconst provider = String(i.VOICE_PROVIDER || 'bland').toLowerCase();\nreturn [{ json: {\n  provider,\n  to_number: i.TEST_MODE ? i.MY_PHONE : i.BAKERY_PHONE,   // TEST_MODE rings your own phone\n  bakery_name: i.BAKERY_NAME || 'the bakery',\n  order: i.ORDER || 'a pie and a custard tart',\n  pickup_minutes: String(i.PICKUP_IN_MIN || 15),\n  customer_name: i.CUSTOMER_NAME || 'YOUR_NAME',\n  elevenlabs_agent_id: i.ELEVENLABS_AGENT_ID || '',\n  elevenlabs_phone_number_id: i.ELEVENLABS_PHONE_NUMBER_ID || '',\n  bland_voice: i.BLAND_VOICE || 'mason',\n  telegram_chat_id: i.TELEGRAM_CHAT_ID,\n} }];"
+      }
+    },
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.provider === 'elevenlabs' }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "call-via-elevenlabs",
+      "name": "Call via ElevenLabs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        200
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ agent_id: $json.elevenlabs_agent_id, agent_phone_number_id: $json.elevenlabs_phone_number_id, to_number: $json.to_number, conversation_initiation_client_data: { dynamic_variables: { bakery_name: $json.bakery_name, order: $json.order, pickup_minutes: $json.pickup_minutes, customer_name: $json.customer_name } } }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "ElevenLabs API key (header: xi-api-key)"
+        }
+      }
+    },
+    {
+      "id": "call-via-bland-backup",
+      "name": "Call via Bland (backup)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        420
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.bland.ai/v1/calls",
+        "options": {
+          "timeout": 30000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ phone_number: $json.to_number, task: 'You are Kook, a calm, polite AI assistant with a dry, faintly British manner, a bit like a very capable butler. You are calling ' + $json.bakery_name + ' on behalf of ' + $json.customer_name + '. Wait for them to greet you and only carry on if a real person answers; if it is voicemail, hang up and leave no message. Order ' + $json.order + ' for pickup in about ' + $json.pickup_minutes + ' minutes under the name ' + $json.customer_name + '. If they ask, say you are an AI assistant ordering for ' + $json.customer_name + '. Read the order and pickup time back, thank them and end the call. Keep it short.', voice: $json.bland_voice, first_sentence: 'Good morning. I am calling on behalf of ' + $json.customer_name + '. Could I order ' + $json.order + ' for pickup please?', wait_for_greeting: true, max_duration: 3, answered_by_enabled: true, voicemail_action: 'hangup', record: false, model: 'turbo', metadata: { job: 'bakery' }, analysis_schema: { order_confirmed: 'boolean', pickup_time: 'string' }, webhook: 'https://YOUR-N8N/webhook/call-results' }) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth"
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "",
+          "name": "Bland API key (header: authorization)"
+        }
+      }
+    },
+    {
+      "id": "tell-me-it-s-ringing",
+      "name": "Tell me it's ringing",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "chatId": "={{ $('Call details').first().json.telegram_chat_id }}",
+        "text": "=📞 Kook is ringing {{ $('Call details').first().json.bakery_name }} ({{ $('Call details').first().json.provider }}) for {{ $('Call details').first().json.order }}, pickup in {{ $('Call details').first().json.pickup_minutes }} min.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram bot"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When Kook calls": {
+      "main": [
+        [
+          {
+            "node": "Call details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call details": {
+      "main": [
+        [
+          {
+            "node": "ElevenLabs?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ElevenLabs?": {
+      "main": [
+        [
+          {
+            "node": "Call via ElevenLabs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Call via Bland (backup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call via ElevenLabs": {
+      "main": [
+        [
+          {
+            "node": "Tell me it's ringing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call via Bland (backup)": {
+      "main": [
+        [
+          {
+            "node": "Tell me it's ringing",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Perth",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "active": false
+}

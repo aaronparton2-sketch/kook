@@ -1,0 +1,78 @@
+{
+  "name": "🧪 KOOK — Test the bakery call (manual)",
+  "nodes": [
+    {
+      "id": "run-the-test-call",
+      "name": "Run the test call",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "kook-settings",
+      "name": "Kook settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ============ KOOK SETTINGS ============  (edit these, nothing else)\nreturn [{ json: {\n  // --- you\n  CUSTOMER_NAME: 'YOUR_NAME',\n  MY_PHONE: 'YOUR_MOBILE',          // the pre-wake text + (TEST_MODE) every call and sick text\n  TWILIO_FROM: 'YOUR_TWILIO_NUMBER',\n  TELEGRAM_CHAT_ID: 'YOUR_TELEGRAM_CHAT_ID',\n  // --- the cover story\n  BOSS_PHONE: 'YOUR_MOBILE',        // who gets \"feeling a bit off this morning\"\n  CALENDAR_ID: 'YOUR_GOOGLE_CALENDAR_ID',   // Google Calendar id whose meetings move to tomorrow\n  // --- the bakery\n  BAKERY_NAME: 'the local bakery',\n  BAKERY_PHONE: 'YOUR_MOBILE',      // real bakery number goes here when TEST_MODE is off\n  ORDER: 'a pie and a custard tart',\n  PICKUP_IN_MIN: 15,\n  VOICE_PROVIDER: 'bland',           // 'elevenlabs' once the agent + Twilio number are connected\n  ELEVENLABS_AGENT_ID: '',\n  ELEVENLABS_PHONE_NUMBER_ID: '',\n  BLAND_VOICE: 'mason',\n  // --- the call on the surf\n  MIN_SURF_FT: 3,        // Surfline's scale\n  MAX_WIND_KT: 12,       // light winds only\n  EARLIEST_HOUR: 5,\n  FIRST_LIGHT_HOUR: 6,   // don't fire before the cams can see (Perth sunrise ~5:10am Dec, ~7:15am Jun)\n  BEFORE_HOUR: 10,       // has to be on before 10am\n  SESSION_MIN: 90,\n  TRAVEL_MIN: 20,\n  // --- the crowd count\n  VISION_MODEL: 'claude-sonnet-5',   // Haiku undercounts: a surfer on a cam is a few pixels\n  CROWD_PROMPT: \"This is a zoomed strip of a live surf webcam, showing the lineup at a beach break. Surfers are tiny dark specks or short dark lines sitting or lying on boards, around and just beyond the whitewater. Work left to right across the whole strip. First list every surfer you can see with a rough horizontal position as a percentage of the width, then give the total. Do not count birds, buoys, foam or people on the sand. Finish with one line of JSON only: {\\\"surfers\\\": <int>, \\\"visibility\\\": \\\"good|poor|dark\\\"}\",\n  CAM_W: 1280, CAM_H: 720,           // Surfline cam stills are 1280x720\n  SEED_CROWD: null,      // filming: e.g. { 'Trigg Point': 11 } replaces a dark/unreadable count\n  // --- safety\n  TEST_MODE: true,       // calls + sick text go to MY_PHONE, drive-home wait is 1 minute\n  FORCE_FIRE: false,     // true = run the whole cascade even when the surf is rubbish\n  // --- breaks. Surfline spotIds are public. Only Trigg has cams; the others are forecast only.\n  // crop = the strip of water the lineup sits in, as fractions of the frame height, zoomed before counting.\n  // The whole frame counted 3 when 8 were out. Tune top/bottom per cam; null counts the whole frame.\n  SPOTS: [\n    { name: 'Trigg', spotId: '584204204e65fad6a7709268', lat: -31.8784, lon: 115.7513, shoreFacing: 270,\n      cams: [\n        { break: 'Trigg Point', still: 'https://camstills.cdn-surfline.com/ap-southeast-2/au-triggpoint/latest_full.jpg', crop: { top: 0.52, bottom: 0.70, zoom: 2 } },\n        { break: 'North Trigg', still: 'https://camstills.cdn-surfline.com/ap-southeast-2/au-northtriggbeach/latest_full.jpg', crop: null },\n        { break: 'Trigg Beach', still: 'https://camstills.cdn-surfline.com/ap-southeast-2/au-triggbeach/latest_full.jpg', crop: null },\n        { break: 'South Trigg', still: 'https://camstills.cdn-surfline.com/ap-southeast-2/au-sthtriggbeach/latest_full.jpg', crop: null },\n      ] },\n    { name: 'Scarborough', spotId: '5842041f4e65fad6a7708c1e', lat: -31.8914, lon: 115.7539, shoreFacing: 270, cams: [] },\n    { name: 'Cottesloe', spotId: '5842041f4e65fad6a7708c1f', lat: -32.0073, lon: 115.7513, shoreFacing: 270, cams: [] },\n  ],\n} }];"
+      }
+    },
+    {
+      "id": "call-the-bakery",
+      "name": "Call the bakery",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "YOUR_BAKERY_CALL_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Run the test call": {
+      "main": [
+        [
+          {
+            "node": "Kook settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kook settings": {
+      "main": [
+        [
+          {
+            "node": "Call the bakery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Perth",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "active": false
+}

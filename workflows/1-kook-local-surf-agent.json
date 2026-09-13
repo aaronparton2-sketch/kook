@@ -1,0 +1,1082 @@
+{
+  "name": "🏄 KOOK — Local surf agent (end to end)",
+  "nodes": [
+    {
+      "id": "every-30-min-4-30-9-30am",
+      "name": "Every 30 min, 4:30-9:30am",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0,30 4-9 * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "run-it-now-filming",
+      "name": "Run it now",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        420
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "kook-settings",
+      "name": "Kook settings",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// ============ KOOK SETTINGS ============  (edit these, nothing else)\nreturn [{ json: {\n  // --- you\n  CUSTOMER_NAME: 'YOUR_NAME',\n  MY_PHONE: 'YOUR_MOBILE',          // the pre-wake text + (TEST_MODE) every call and sick text\n  TWILIO_FROM: 'YOUR_TWILIO_NUMBER',\n  TELEGRAM_CHAT_ID: 'YOUR_TELEGRAM_CHAT_ID',\n  // --- the cover story\n  BOSS_PHONE: 'YOUR_MOBILE',        // who gets \"feeling a bit off this morning\"\n  CALENDAR_ID: 'YOUR_GOOGLE_CALENDAR_ID',   // Google Calendar id whose meetings move to tomorrow\n  // --- the bakery\n  BAKERY_NAME: 'the local bakery',\n  BAKERY_PHONE: 'YOUR_MOBILE',      // real bakery number goes here when TEST_MODE is off\n  ORDER: 'a pie and a custard tart',\n  PICKUP_IN_MIN: 15,\n  VOICE_PROVIDER: 'bland',           // 'elevenlabs' once the agent + Twilio number are connected\n  ELEVENLABS_AGENT_ID: '',\n  ELEVENLABS_PHONE_NUMBER_ID: '',\n  BLAND_VOICE: 'mason',\n  // --- the call on the surf\n  MIN_SURF_FT: 3,        // Surfline's scale\n  MAX_WIND_KT: 12,       // light winds only\n  EARLIEST_HOUR: 5,\n  FIRST_LIGHT_HOUR: 6,   // don't fire before the cams can see (Perth sunrise ~5:10am Dec, ~7:15am Jun)\n  BEFORE_HOUR: 10,       // has to be on before 10am\n  SESSION_MIN: 90,\n  TRAVEL_MIN: 20,\n  // --- the crowd count\n  VISION_MODEL: 'claude-sonnet-5',   // Haiku undercounts: a surfer on a cam is a few pixels\n  CROWD_PROMPT: \"This is a zoomed strip of a live surf webcam, showing the lineup at a beach break. Surfers are tiny dark specks or short dark lines sitting or lying on boards, around and just beyond the whitewater. Work left to right across the whole strip. First list every surfer you can see with a rough horizontal position as a percentage of the width, then give the total. Do not count birds, buoys, foam or people on the sand. Finish with one line of JSON only: {\\\"surfers\\\": <int>, \\\"visibility\\\": \\\"good|poor|dark\\\"}\",\n  CAM_W: 1280, CAM_H: 720,           // Surfline cam stills are 1280x720\n  SEED_CROWD: null,      // filming: e.g. { 'Trigg Point': 11 } replaces a dark/unreadable count\n  // --- safety\n  TEST_MODE: true,       // calls + sick text go to MY_PHONE, drive-home wait is 1 minute\n  FORCE_FIRE: false,     // true = run the whole cascade even when the surf is rubbish\n  // --- breaks. Surfline spotIds are public. Only Trigg has cams; the others are forecast only.\n  // crop = the strip of water the lineup sits in, as fractions of the frame height, zoomed before counting.\n  // The whole frame counted 3 when 8 were out. Tune top/bottom per cam; null counts the whole frame.\n  SPOTS: [\n    { name: 'Trigg', spotId: '584204204e65fad6a7709268', lat: -31.8784, lon: 115.7513, shoreFacing: 270,\n      cams: [\n        { break: 'Trigg Point', still: 'https://camstills.cdn-surfline.com/ap-southeast-2/au-triggpoint/latest_full.jpg', crop: { top: 0.52, bottom: 0.70, zoom: 2 } },\n        { break: 'North Trigg', still: 'https://camstills.cdn-surfline.com/ap-southeast-2/au-northtriggbeach/latest_full.jpg', crop: null },\n        { break: 'Trigg Beach', still: 'https://camstills.cdn-surfline.com/ap-southeast-2/au-triggbeach/latest_full.jpg', crop: null },\n        { break: 'South Trigg', still: 'https://camstills.cdn-surfline.com/ap-southeast-2/au-sthtriggbeach/latest_full.jpg', crop: null },\n      ] },\n    { name: 'Scarborough', spotId: '5842041f4e65fad6a7708c1e', lat: -31.8914, lon: 115.7539, shoreFacing: 270, cams: [] },\n    { name: 'Cottesloe', spotId: '5842041f4e65fad6a7708c1f', lat: -32.0073, lon: 115.7513, shoreFacing: 270, cams: [] },\n  ],\n} }];"
+      }
+    },
+    {
+      "id": "split-spots",
+      "name": "Split spots",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const S = $input.first().json;\nreturn S.SPOTS.map(s => ({ json: s }));"
+      }
+    },
+    {
+      "id": "surfline-swell",
+      "name": "Surfline swell",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1200,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://r.jina.ai/https://services.surfline.com/kbyg/spots/forecasts/wave",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "spotId",
+              "value": "={{ $('Split spots').item.json.spotId }}"
+            },
+            {
+              "name": "days",
+              "value": "1"
+            },
+            {
+              "name": "intervalHours",
+              "value": "1"
+            },
+            {
+              "name": "units[waveHeight]",
+              "value": "HI"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Return-Format",
+              "value": "text"
+            }
+          ]
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "surfline-wind",
+      "name": "Surfline wind",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://r.jina.ai/https://services.surfline.com/kbyg/spots/forecasts/wind",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "spotId",
+              "value": "={{ $('Split spots').item.json.spotId }}"
+            },
+            {
+              "name": "days",
+              "value": "1"
+            },
+            {
+              "name": "intervalHours",
+              "value": "1"
+            },
+            {
+              "name": "units[waveHeight]",
+              "value": "HI"
+            }
+          ]
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Return-Format",
+              "value": "text"
+            }
+          ]
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "open-meteo-swell-backup",
+      "name": "Open-Meteo swell (backup)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://marine-api.open-meteo.com/v1/marine",
+        "options": {
+          "timeout": 30000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "latitude",
+              "value": "={{ $('Split spots').item.json.lat }}"
+            },
+            {
+              "name": "longitude",
+              "value": "={{ $('Split spots').item.json.lon }}"
+            },
+            {
+              "name": "hourly",
+              "value": "wave_height"
+            },
+            {
+              "name": "timezone",
+              "value": "Australia/Perth"
+            },
+            {
+              "name": "forecast_days",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "open-meteo-wind-backup",
+      "name": "Open-Meteo wind (backup)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1920,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.open-meteo.com/v1/forecast",
+        "options": {
+          "timeout": 30000
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "latitude",
+              "value": "={{ $('Split spots').item.json.lat }}"
+            },
+            {
+              "name": "longitude",
+              "value": "={{ $('Split spots').item.json.lon }}"
+            },
+            {
+              "name": "hourly",
+              "value": "wind_speed_10m,wind_direction_10m"
+            },
+            {
+              "name": "wind_speed_unit",
+              "value": "kn"
+            },
+            {
+              "name": "timezone",
+              "value": "Australia/Perth"
+            },
+            {
+              "name": "forecast_days",
+              "value": "1"
+            }
+          ]
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "score-the-morning",
+      "name": "Score the morning",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const S = $('Kook settings').first().json;\nconst spots = $('Split spots').all().map(i => i.json);\nconst TZ = 'Australia/Perth';\nconst now = new Date();\nconst hourOf = d => Number(new Intl.DateTimeFormat('en-AU', { timeZone: TZ, hour: '2-digit', hourCycle: 'h23' }).format(d));\nconst dayOf = d => new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(d);\nconst today = dayOf(now);\nconst asJson = v => {\n  if (v == null) return null;\n  if (typeof v === 'object' && v.data && (v.data.wave || v.data.wind)) return v;\n  let t = typeof v === 'string' ? v : (v.data ?? v.body ?? JSON.stringify(v));\n  if (typeof t !== 'string') return null;\n  const s = t.indexOf('{'), e = t.lastIndexOf('}');\n  try { return s < 0 ? null : JSON.parse(t.slice(s, e + 1)); } catch (err) { return null; }\n};\nconst windType = (from, facing) => {\n  const offshoreFrom = (facing + 180) % 360;\n  const d = Math.abs(((from - offshoreFrom) % 360 + 540) % 360 - 180);\n  return d <= 45 ? 'Offshore' : d <= 100 ? 'Cross-shore' : 'Onshore';\n};\nconst score = r => r.surfFt * 2 - r.windKt * 0.3 + (r.windType === 'Offshore' ? 3 : 0);\nconst out = spots.map((sp, i) => {\n  const w = asJson($('Surfline swell').all()[i]?.json), wi = asJson($('Surfline wind').all()[i]?.json);\n  const om = $('Open-Meteo swell (backup)').all()[i]?.json, ow = $('Open-Meteo wind (backup)').all()[i]?.json;\n  let rows = [], source = 'Surfline';\n  if (w?.data?.wave?.length && wi?.data?.wind?.length) {\n    const byTs = {}; wi.data.wind.forEach(x => byTs[x.timestamp] = x);\n    rows = w.data.wave.map(x => ({ t: new Date(x.timestamp * 1000), surfFt: x.surf.max,\n      windKt: Math.round(byTs[x.timestamp]?.speed ?? 99), windType: byTs[x.timestamp]?.directionType || 'Onshore' }));\n  } else if (om?.hourly && ow?.hourly) {\n    source = 'Open-Meteo';   // metres of wave height, roughly converted to Surfline's scale\n    rows = om.hourly.time.map((ts, k) => ({ t: new Date(ts + ':00+08:00'),\n      surfFt: Math.round(om.hourly.wave_height[k] * 3.28 * 0.6 * 10) / 10,\n      windKt: Math.round(ow.hourly.wind_speed_10m[k]), windType: windType(ow.hourly.wind_direction_10m[k], sp.shoreFacing) }));\n  }\n  const morning = rows.filter(r => dayOf(r.t) === today && hourOf(r.t) >= S.EARLIEST_HOUR && hourOf(r.t) < S.BEFORE_HOUR\n                                   && r.t.getTime() >= now.getTime() - 3600e3);\n  const good = morning.filter(r => r.surfFt >= S.MIN_SURF_FT && r.windKt <= S.MAX_WIND_KT && r.windType !== 'Onshore');\n  // Past the morning window (a forced afternoon run for filming), use the NEAREST coming hour. Taking the best\n  // score of the whole day picked 11pm on 13 Sep and texted \"Best at 11:00pm\".\n  const upcoming = rows.filter(r => r.t.getTime() >= now.getTime() - 3600e3).sort((a, b) => a.t - b.t);\n  const best = (good.length ? good : morning).sort((a, b) => score(b) - score(a))[0] || upcoming[0] || rows.sort((a, b) => score(b) - score(a))[0];\n  return { spot: sp.name, source, on: good.length > 0, cams: sp.cams || [],\n           best: best ? { at: best.t.toISOString(), surfFt: best.surfFt, windKt: best.windKt, windType: best.windType, score: Math.round(score(best) * 10) / 10 } : null };\n});\nout.sort((a, b) => (b.on - a.on) || ((b.best?.score ?? -99) - (a.best?.score ?? -99)));\nconst sd = $getWorkflowStaticData('global');\nlet firing = out.some(s => s.on) || S.FORCE_FIRE;\nif (firing && !S.FORCE_FIRE && hourOf(now) < (S.FIRST_LIGHT_HOUR ?? 0)) firing = false;   // cams can't see yet; the first run after light fires\nif (firing && sd.firedOn === today && !S.FORCE_FIRE && !S.TEST_MODE) firing = false;   // once a day in production\nif (firing) sd.firedOn = today;\nreturn [{ json: { firing, forced: S.FORCE_FIRE && !out.some(s => s.on), spots: out } }];"
+      }
+    },
+    {
+      "id": "pumping",
+      "name": "Pumping?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.firing }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "test-mode-tell-me-it-s-flat",
+      "name": "Test mode? (tell me it's flat)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        560
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $('Kook settings').first().json.TEST_MODE }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "stay-in-bed",
+      "name": "Stay in bed",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        2880,
+        560
+      ],
+      "parameters": {
+        "chatId": "={{ $('Kook settings').first().json.TELEGRAM_CHAT_ID }}",
+        "text": "=😴 Kook checked the breaks. Nothing worth it before 10am. Stay in bed.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram bot"
+        }
+      }
+    },
+    {
+      "id": "cam-stills",
+      "name": "Cam stills",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3120,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const S = $('Kook settings').first().json;\nconst m = $('Score the morning').first().json;\nconst items = [];\nfor (const s of m.spots) for (const c of s.cams) {\n  const cr = c.crop || { top: 0, bottom: 1, zoom: 1 };   // no crop = count the whole frame\n  const y = Math.round(S.CAM_H * cr.top), h = Math.round(S.CAM_H * (cr.bottom - cr.top));\n  items.push({ json: { spot: s.spot, break: c.break, still: c.still + '?t=' + Date.now(),\n    camW: S.CAM_W, cropY: y, cropH: h, outW: Math.round(S.CAM_W * cr.zoom), outH: Math.round(h * cr.zoom) } });\n}\nreturn items.length ? items : [{ json: { spot: null, break: 'no cam', still: null } }];"
+      }
+    },
+    {
+      "id": "download-the-still",
+      "name": "Download the still",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3360,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json.still }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          }
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "crop-zoom-the-lineup",
+      "name": "Crop + zoom the lineup",
+      "type": "n8n-nodes-base.editImage",
+      "typeVersion": 1,
+      "position": [
+        3600,
+        300
+      ],
+      "parameters": {
+        "operation": "multiStep",
+        "operations": {
+          "operations": [
+            {
+              "operation": "crop",
+              "width": "={{ $('Cam stills').item.json.camW }}",
+              "height": "={{ $('Cam stills').item.json.cropH }}",
+              "positionX": 0,
+              "positionY": "={{ $('Cam stills').item.json.cropY }}"
+            },
+            {
+              "operation": "resize",
+              "width": "={{ $('Cam stills').item.json.outW }}",
+              "height": "={{ $('Cam stills').item.json.outH }}",
+              "resizeOption": "ignoreAspectRatio"
+            }
+          ]
+        },
+        "options": {
+          "format": "jpeg",
+          "quality": 90
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "encode-for-claude",
+      "name": "Encode for Claude",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Claude takes the cropped frame as base64. A failed download or crop leaves no image, which reads as \"cam unreadable\".\nconst cams = $('Cam stills').all();\nconst out = [];\nfor (let i = 0; i < $input.all().length; i++) {\n  let image_b64 = null;\n  try { image_b64 = (await this.helpers.getBinaryDataBuffer(i, 'data')).toString('base64'); } catch (e) {}\n  out.push({ json: { break: cams[i]?.json.break, image_b64 } });\n}\nreturn out;"
+      }
+    },
+    {
+      "id": "count-heads-claude-vision",
+      "name": "Count heads (Claude vision)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4080,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.anthropic.com/v1/messages",
+        "options": {
+          "timeout": 60000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "anthropic-version",
+              "value": "2023-06-01"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ model: $('Kook settings').first().json.VISION_MODEL, max_tokens: 1000, messages: [{ role: 'user', content: [ { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: $json.image_b64 } }, { type: 'text', text: $('Kook settings').first().json.CROWD_PROMPT } ] }] }) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "anthropicApi"
+      },
+      "credentials": {
+        "anthropicApi": {
+          "id": "",
+          "name": "Anthropic account"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "make-the-call",
+      "name": "Make the call",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4320,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const S = $('Kook settings').first().json;\nconst m = $('Score the morning').first().json;\nconst cams = $('Cam stills').all().map(i => i.json);\nconst counts = $('Count heads (Claude vision)').all().map((it, k) => {\n  let surfers = null, visibility = 'unknown';\n  const txt = (it.json.content || []).map(c => c.text || '').join(' ');\n  try {\n    const j = JSON.parse(txt.slice(txt.lastIndexOf('{'), txt.lastIndexOf('}') + 1));   // the JSON is the LAST line, after the list\n    surfers = Number.isFinite(j.surfers) ? j.surfers : null; visibility = j.visibility || visibility;\n  } catch (e) {}\n  if (surfers == null) { const t = txt.match(/total[^0-9]{0,20}(\\d+)/i); if (t) surfers = Number(t[1]); }   // reply cut off before the JSON\n  const seed = S.SEED_CROWD && S.SEED_CROWD[cams[k]?.break];\n  if (visibility === 'dark') surfers = null;   // a black frame \"counts\" 0, which would read as an empty lineup\n  if (seed != null && surfers == null) surfers = seed;\n  return { break: cams[k]?.break, spot: cams[k]?.spot, surfers, visibility };\n}).filter(c => c.break && c.break !== 'no cam');\nconst TZ = 'Australia/Perth';\nconst clock = d => new Intl.DateTimeFormat('en-AU', { timeZone: TZ, hour: 'numeric', minute: '2-digit' }).format(d).replace(' ', '').toLowerCase();\nconst WORDS = ['Nobody', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve',\n  'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen', 'Twenty'];\nconst best = m.spots[0];\nconst readable = counts.filter(c => c.surfers != null);\nconst pick = best.cams.length && readable.length ? readable.sort((a, b) => a.surfers - b.surfers)[0] : null;\nconst where = pick ? pick.break : best.spot;\nconst out = pick ? pick.surfers : null;\nconst now = new Date();\n// A forced run means \"go now\", so the session starts one drive from now rather than at the forecast's best hour.\nlet start = new Date(Math.max(m.forced || S.FORCE_FIRE ? 0 : new Date(best.best.at).getTime(), now.getTime() + S.TRAVEL_MIN * 60e3));\nstart = new Date(Math.ceil(start.getTime() / 300e3) * 300e3);\nconst leave = new Date(start.getTime() - S.TRAVEL_MIN * 60e3);\nconst end = new Date(start.getTime() + S.SESSION_MIN * 60e3);\nconst home = new Date(end.getTime() + S.TRAVEL_MIN * 60e3);\nconst callAt = S.TEST_MODE ? new Date(now.getTime() + 60e3) : end;   // ring the bakery as the drive home starts\nconst crowdWord = out == null ? 'Cam\\'s blind' : `${WORDS[out] ?? out} out`;\nconst verdict = `${crowdWord}. ${best.best.windType}. ${(out ?? 0) <= 25 ? 'Worth it. Get up.' : 'Packed. Still worth it.'}`;\nconst lines = [\n  ...counts.map(c => `${c.break}: ${c.surfers != null ? c.surfers + ' out' : c.visibility === 'dark' ? 'too dark to count' : 'cam unreadable'}`),\n  ...m.spots.filter(s => !s.cams.length).map(s => `${s.spot}: no cam, ${s.best ? s.best.surfFt + 'ft ' + s.best.windType.toLowerCase() : 'no forecast'}`),\n];\nconst smsText = `KOOK: ${verdict}\\nGo ${where}! Best at ${clock(start)}.\\n${best.spot} ${best.best.surfFt}ft, ${best.best.windKt}kn ${best.best.windType.toLowerCase()} (${best.source})\\n\\n${lines.join('\\n')}`;\nreturn [{ json: {\n  verdict, where, surfers: out, spot: best.spot, forecast: best.best, counts, forced: m.forced,\n  smsText,\n  askText: `🏄 ${verdict}\\nGo ${where} at ${clock(start)}.\\n\\nChase Barrels or go to work?`,\n  planText: `Sorted. Sick text sent${S.CALENDAR_ID ? ', meetings moved to tomorrow' : ''}.\\nLeave ${clock(leave)}. Paddle out ${clock(start)}. In till ${clock(end)}. Home ${clock(home)}.\\nPie and custard tart ordered on the drive home.`,\n  leaveAt: leave.toISOString(), startAt: start.toISOString(), endAt: end.toISOString(), homeAt: home.toISOString(), callAt: callAt.toISOString(),\n} }];"
+      }
+    },
+    {
+      "id": "text-me-the-call",
+      "name": "Text me the call",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        4560,
+        300
+      ],
+      "parameters": {
+        "from": "={{ $('Kook settings').first().json.TWILIO_FROM }}",
+        "to": "={{ $('Kook settings').first().json.MY_PHONE }}",
+        "message": "={{ $('Make the call').first().json.smsText }}",
+        "options": {}
+      },
+      "credentials": {
+        "twilioApi": {
+          "id": "",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "id": "chase-barrels-or-go-to-work",
+      "name": "Chase Barrels or go to work?",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        4800,
+        300
+      ],
+      "parameters": {
+        "operation": "sendAndWait",
+        "chatId": "={{ $('Kook settings').first().json.TELEGRAM_CHAT_ID }}",
+        "message": "={{ $('Make the call').first().json.askText }}",
+        "responseType": "approval",
+        "approvalOptions": {
+          "values": {
+            "approvalType": "double",
+            "approveLabel": "Chase Barrels 🏄🌊",
+            "disapproveLabel": "Go to work 💼"
+          }
+        },
+        "options": {
+          "limitWaitTime": {
+            "values": {
+              "limitType": "afterTimeInterval",
+              "resumeAmount": 60,
+              "resumeUnit": "minutes"
+            }
+          }
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram bot"
+        }
+      }
+    },
+    {
+      "id": "surf",
+      "name": "Surf?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        5040,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.data?.approved === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "go-to-work",
+      "name": "Go to work",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        5280,
+        560
+      ],
+      "parameters": {
+        "chatId": "={{ $('Kook settings').first().json.TELEGRAM_CHAT_ID }}",
+        "text": "=💼 Righto. Go to work. The waves will still be there tomorrow.",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram bot"
+        }
+      }
+    },
+    {
+      "id": "sick-text-to-the-boss",
+      "name": "Sick text to the boss",
+      "type": "n8n-nodes-base.twilio",
+      "typeVersion": 1,
+      "position": [
+        5520,
+        300
+      ],
+      "parameters": {
+        "from": "={{ $('Kook settings').first().json.TWILIO_FROM }}",
+        "to": "={{ $('Kook settings').first().json.BOSS_PHONE }}",
+        "message": "Feeling a bit off this morning, gonna take it easy.",
+        "options": {}
+      },
+      "credentials": {
+        "twilioApi": {
+          "id": "",
+          "name": "Twilio account"
+        }
+      }
+    },
+    {
+      "id": "today-s-meetings",
+      "name": "Today's meetings",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [
+        5760,
+        120
+      ],
+      "parameters": {
+        "operation": "getAll",
+        "calendar": "={{ $('Kook settings').first().json.CALENDAR_ID }}",
+        "returnAll": true,
+        "options": {
+          "timeMin": "={{ $now.setZone('Australia/Perth').startOf('day').toISO() }}",
+          "timeMax": "={{ $now.setZone('Australia/Perth').endOf('day').toISO() }}",
+          "singleEvents": true
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "move-each-to-tomorrow",
+      "name": "Move each to tomorrow",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [
+        6000,
+        120
+      ],
+      "parameters": {
+        "operation": "update",
+        "calendar": "={{ $('Kook settings').first().json.CALENDAR_ID }}",
+        "eventId": "={{ $json.id }}",
+        "updateFields": {
+          "start": "={{ DateTime.fromISO($json.start.dateTime).plus({ days: 1 }).toISO() }}",
+          "end": "={{ DateTime.fromISO($json.end.dateTime).plus({ days: 1 }).toISO() }}"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "book-the-surf-block",
+      "name": "Book the SURF block",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1,
+      "position": [
+        6240,
+        300
+      ],
+      "parameters": {
+        "calendar": "={{ $('Kook settings').first().json.CALENDAR_ID }}",
+        "start": "={{ $('Make the call').first().json.leaveAt }}",
+        "end": "={{ $('Make the call').first().json.homeAt }}",
+        "additionalFields": {
+          "summary": "🏄 SURF (off sick)"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "here-s-the-plan",
+      "name": "Here's the plan",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [
+        6480,
+        300
+      ],
+      "parameters": {
+        "chatId": "={{ $('Kook settings').first().json.TELEGRAM_CHAT_ID }}",
+        "text": "={{ $('Make the call').first().json.planText }}",
+        "additionalFields": {
+          "appendAttribution": false
+        }
+      },
+      "credentials": {
+        "telegramApi": {
+          "id": "",
+          "name": "Telegram bot"
+        }
+      }
+    },
+    {
+      "id": "wait-for-the-drive-home",
+      "name": "Wait for the drive home",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        6720,
+        300
+      ],
+      "parameters": {
+        "resume": "specificTime",
+        "dateTime": "={{ $('Make the call').first().json.callAt }}"
+      }
+    },
+    {
+      "id": "bakery-order",
+      "name": "Bakery order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6960,
+        300
+      ],
+      "parameters": {
+        "jsCode": "return [{ json: $('Kook settings').first().json }];"
+      }
+    },
+    {
+      "id": "call-the-bakery",
+      "name": "Call the bakery",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.1,
+      "position": [
+        7200,
+        300
+      ],
+      "parameters": {
+        "source": "database",
+        "workflowId": {
+          "__rl": true,
+          "value": "YOUR_BAKERY_CALL_WORKFLOW_ID",
+          "mode": "id"
+        },
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "Every 30 min, 4:30-9:30am": {
+      "main": [
+        [
+          {
+            "node": "Kook settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Run it now": {
+      "main": [
+        [
+          {
+            "node": "Kook settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Kook settings": {
+      "main": [
+        [
+          {
+            "node": "Split spots",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split spots": {
+      "main": [
+        [
+          {
+            "node": "Surfline swell",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Surfline swell": {
+      "main": [
+        [
+          {
+            "node": "Surfline wind",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Surfline wind": {
+      "main": [
+        [
+          {
+            "node": "Open-Meteo swell (backup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open-Meteo swell (backup)": {
+      "main": [
+        [
+          {
+            "node": "Open-Meteo wind (backup)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Open-Meteo wind (backup)": {
+      "main": [
+        [
+          {
+            "node": "Score the morning",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score the morning": {
+      "main": [
+        [
+          {
+            "node": "Pumping?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pumping?": {
+      "main": [
+        [
+          {
+            "node": "Cam stills",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Test mode? (tell me it's flat)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Test mode? (tell me it's flat)": {
+      "main": [
+        [
+          {
+            "node": "Stay in bed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cam stills": {
+      "main": [
+        [
+          {
+            "node": "Download the still",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download the still": {
+      "main": [
+        [
+          {
+            "node": "Crop + zoom the lineup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crop + zoom the lineup": {
+      "main": [
+        [
+          {
+            "node": "Encode for Claude",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Encode for Claude": {
+      "main": [
+        [
+          {
+            "node": "Count heads (Claude vision)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Count heads (Claude vision)": {
+      "main": [
+        [
+          {
+            "node": "Make the call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Make the call": {
+      "main": [
+        [
+          {
+            "node": "Text me the call",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Text me the call": {
+      "main": [
+        [
+          {
+            "node": "Chase Barrels or go to work?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chase Barrels or go to work?": {
+      "main": [
+        [
+          {
+            "node": "Surf?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Surf?": {
+      "main": [
+        [
+          {
+            "node": "Sick text to the boss",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Today's meetings",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Go to work",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Today's meetings": {
+      "main": [
+        [
+          {
+            "node": "Move each to tomorrow",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sick text to the boss": {
+      "main": [
+        [
+          {
+            "node": "Book the SURF block",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Book the SURF block": {
+      "main": [
+        [
+          {
+            "node": "Here's the plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Here's the plan": {
+      "main": [
+        [
+          {
+            "node": "Wait for the drive home",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait for the drive home": {
+      "main": [
+        [
+          {
+            "node": "Bakery order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Bakery order": {
+      "main": [
+        [
+          {
+            "node": "Call the bakery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Australia/Perth",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "active": false
+}

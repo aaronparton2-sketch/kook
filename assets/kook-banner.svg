@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-label="KOOK, the dumbest useful automation I've ever built">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#081A33"/>
+      <stop offset="0.5" stop-color="#0F3B63"/>
+      <stop offset="1" stop-color="#17708A"/>
+    </linearGradient>
+    <radialGradient id="sun" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFE3A3"/>
+      <stop offset="0.7" stop-color="#FFB36B"/>
+      <stop offset="1" stop-color="#FF8A5B"/>
+    </radialGradient>
+    <radialGradient id="haze" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#FFB36B" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FFB36B" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="card"><rect width="1280" height="360" rx="28"/></clipPath>
+  </defs>
+  <g clip-path="url(#card)">
+    <rect width="1280" height="360" fill="url(#sky)"/>
+    <circle cx="1020" cy="170" r="190" fill="url(#haze)"/>
+    <circle cx="1020" cy="170" r="74" fill="url(#sun)"/>
+    <g fill="#FFFFFF" opacity="0.55">
+      <circle cx="140" cy="52" r="1.6"/><circle cx="410" cy="34" r="1.2"/><circle cx="640" cy="70" r="1.4"/>
+      <circle cx="760" cy="28" r="1.1"/><circle cx="1210" cy="46" r="1.5"/><circle cx="880" cy="96" r="1"/>
+    </g>
+    <path d="M0 262 C 150 236 300 290 470 262 S 790 232 960 262 S 1180 292 1280 258 L1280 360 L0 360 Z" fill="#1E93A6" opacity="0.55"/>
+    <path d="M0 298 C 170 270 350 326 540 298 S 880 268 1060 298 S 1210 318 1280 292 L1280 360 L0 360 Z" fill="#2AB3C0" opacity="0.65"/>
+    <g fill="#0B2239">
+      <ellipse cx="318" cy="289" rx="7" ry="3"/><ellipse cx="352" cy="286" rx="6" ry="2.6"/>
+      <ellipse cx="596" cy="292" rx="7" ry="3"/><ellipse cx="628" cy="290" rx="6" ry="2.6"/>
+      <ellipse cx="664" cy="293" rx="6.5" ry="2.8"/><ellipse cx="902" cy="284" rx="7" ry="3"/>
+    </g>
+    <path d="M0 330 C 210 310 400 352 620 330 S 1010 310 1280 332 L1280 360 L0 360 Z" fill="#E8F7F6" opacity="0.9"/>
+    <text x="78" y="148" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="118" font-weight="900" letter-spacing="12" fill="#FFFFFF">KOOK</text>
+    <text x="82" y="194" font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif" font-size="28" font-weight="600" fill="#D4ECF5">The dumbest useful automation I've ever built.</text>
+    <text x="84" y="236" font-family="'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace" font-size="17" font-weight="700" letter-spacing="3" fill="#FFB36B">FORECAST  ·  CROWD COUNT  ·  SICK TEXT  ·  BAKERY CALL</text>
+  </g>
+</svg>
